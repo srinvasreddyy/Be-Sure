@@ -7,11 +7,12 @@ const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
 };
 
-// @desc    Register user
+// @desc    Register user & Send OTP
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
   try {
+    // 1. Validate Input
     const schema = Joi.object({
       email: Joi.string().email().required(),
       password: Joi.string().min(6).required()
@@ -21,18 +22,40 @@ exports.register = async (req, res) => {
 
     const { email, password } = req.body;
 
-    // Check if user exists
+    // 2. Check if user exists
     let user = await User.findOne({ email });
     if (user) {
       return res.status(400).json({ success: false, error: 'User already exists' });
     }
 
-    // Create user
+    // 3. Create user (isVerified: false by default)
     user = await User.create({ email, password });
 
+    // 4. Generate & Send OTP immediately
+    const otp = generateOTP();
+    user.otp = {
+      code: otp,
+      expiresAt: Date.now() + 10 * 60 * 1000 // 10 mins
+    };
+    await user.save();
+
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: 'Verify your UK Insurance Account',
+        message: `Welcome! Your verification code is: ${otp}. It expires in 10 minutes.`
+      });
+    } catch (emailErr) {
+      console.error('Email send failed:', emailErr);
+      // We still return the token, but frontend should warn user to resend OTP
+    }
+
+    // 5. Return Token so they are "logged in" but not verified
     sendTokenResponse(user, 201, res);
+
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Server Error' });
   }
 };
 
@@ -67,36 +90,27 @@ exports.login = async (req, res) => {
 
 // @desc    Send OTP for Login/Verification
 // @route   POST /api/auth/send-otp
-// @access  Private (Protected by JWT) or Public if strictly OTP flow
+// @access  Private
 exports.sendOTP = async (req, res) => {
   try {
-    // We assume user is already logged in or providing email. 
-    // Since requirement says "login with gmail otp", we can do this for authenticated users.
-    // Or if it's a passwordless flow, we'd do it differently. 
-    // Here we assume authenticated user requesting verification.
-    
     const user = await User.findById(req.user.id);
     const otp = generateOTP();
     
-    // Set OTP and expiry (10 mins)
     user.otp = {
       code: otp,
       expiresAt: Date.now() + 10 * 60 * 1000
     };
     await user.save();
 
-    // Send Email
     try {
       await sendEmail({
         email: user.email,
-        subject: 'Your UK Insurance Login OTP',
-        message: `Your OTP code is: ${otp}. It expires in 10 minutes.`
+        subject: 'Your OTP Code',
+        message: `Your OTP code is: ${otp}`
       });
       res.status(200).json({ success: true, data: 'Email sent' });
     } catch (err) {
       console.error(err);
-      user.otp = undefined;
-      await user.save();
       return res.status(500).json({ success: false, error: 'Email could not be sent' });
     }
   } catch (err) {
