@@ -1,3 +1,11 @@
+// Handle uncaught exceptions immediately
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION 💥 Shutting down...');
+  console.error(err.name, err.message);
+  // In production, you might want to use the logger here before exit
+  process.exit(1);
+});
+
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
@@ -7,9 +15,15 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
+require('express-async-errors'); // Patch async handlers
 
 // Load env vars
 dotenv.config();
+
+// Utilities
+const logger = require('./utils/logger');
+const globalErrorHandler = require('./middleware/errorMiddleware');
+const AppError = require('./utils/AppError');
 
 // Routes
 const apiRoutes = require('./routes/api');
@@ -22,7 +36,11 @@ app.use(express.json()); // Body parser
 app.use(cors()); // Enable CORS
 app.use(mongoSanitize()); // Prevent NoSQL injection
 app.use(xss()); // Prevent XSS attacks
-app.use(morgan('dev')); // Logging
+
+// Logging via Morgan (HTTP stream to Winston)
+app.use(morgan('combined', { 
+  stream: { write: message => logger.info(message.trim()) } 
+}));
 
 // Rate Limiting
 const limiter = rateLimit({
@@ -35,9 +53,9 @@ app.use('/api', limiter);
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
-    console.log('MongoDB Connected');
+    logger.info('MongoDB Connected');
   } catch (err) {
-    console.error('MongoDB Connection Error:', err.message);
+    logger.error('MongoDB Connection Error:', err);
     process.exit(1);
   }
 };
@@ -48,20 +66,28 @@ app.use('/api', apiRoutes);
 // Health Check
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK', uptime: process.uptime() }));
 
-// Error Handling Middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.statusCode || 500).json({
-    success: false,
-    error: err.message || 'Server Error'
-  });
+// 404 Handler
+app.all('*', (req, res, next) => {
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
 });
+
+// Global Error Handler
+app.use(globalErrorHandler);
 
 // Start Server (only if not testing)
 if (process.env.NODE_ENV !== 'test') {
   connectDB();
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  const server = app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
+
+  // Handle Unhandled Rejections
+  process.on('unhandledRejection', (err) => {
+    logger.error('UNHANDLED REJECTION 💥 Shutting down...');
+    logger.error(err.name, err.message);
+    server.close(() => {
+      process.exit(1);
+    });
+  });
 }
 
-module.exports = app; // For testing
+module.exports = app;

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const AppError = require('../utils/AppError');
 
 exports.protect = async (req, res, next) => {
   let token;
@@ -12,15 +13,18 @@ exports.protect = async (req, res, next) => {
   }
 
   if (!token) {
-    return res.status(401).json({ success: false, error: 'Not authorized to access this route' });
+    return next(new AppError('Not authorized to access this route', 401));
   }
 
-  try {
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id);
-    next();
-  } catch (err) {
-    return res.status(401).json({ success: false, error: 'Not authorized to access this route' });
+  // Verify token
+  // jsonwebtoken errors (JsonWebTokenError, TokenExpiredError) are now caught by express-async-errors
+  // and handled in errorMiddleware
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  
+  req.user = await User.findById(decoded.id);
+  if (!req.user) {
+    return next(new AppError('The user belonging to this token no longer exists.', 401));
   }
+
+  next();
 };
