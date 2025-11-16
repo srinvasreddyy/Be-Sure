@@ -1,3 +1,4 @@
+//
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -26,10 +27,43 @@ const UserSchema = new mongoose.Schema({
     code: String,
     expiresAt: Date
   },
-  // Array of ObjectIds referencing the Vehicle model
+  // Array of ObjectIds referencing the Vehicle model (Search History)
   searchedVehicles: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Vehicle'
+  }],
+  // NEW: Payment History
+  // scalable for any broker (Stripe, PayPal, etc.)
+  payments: [{
+    vehicle: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Vehicle',
+      required: true
+    },
+    amount: {
+      type: Number,
+      required: true
+    },
+    currency: {
+      type: String,
+      default: 'GBP'
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'completed', 'failed', 'refunded'],
+      default: 'pending'
+    },
+    // The ID returned by your future payment broker (e.g., Stripe Intent ID)
+    transactionId: {
+      type: String
+    },
+    paymentMethod: {
+      type: String // e.g., 'card', 'paypal'
+    },
+    date: {
+      type: Date,
+      default: Date.now
+    }
   }],
   createdAt: {
     type: Date,
