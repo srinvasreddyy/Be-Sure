@@ -1,10 +1,36 @@
 const axios = require('axios');
+const cheerio = require('cheerio'); // Import cheerio
 const Vehicle = require('../models/Vehicle');
 const User = require('../models/User');
 const AppError = require('../utils/AppError');
 
-// @desc    Step 1: Fetch Vehicle Data (from DB or DVLA)
-// @route   POST /api/vehicle/lookup
+/**
+ * NEW Helper function to find data in the new HTML structure.
+ * It looks for a <div class="data-type"> with the matching label
+ * and returns the text of its sibling <div class="data-value">.
+ */
+const findRowData = ($, label) => {
+  try {
+    let value = '';
+    // Find all 'data-type' divs
+    $('div.data-type').each((index, element) => {
+      // Check if the text matches the label (case-insensitive)
+      if ($(element).text().trim().toLowerCase() === label.toLowerCase()) {
+        // Get the sibling 'data-value' div's text
+        value = $(element).siblings('div.data-value').text().trim();
+        return false; // Exit the .each() loop once found
+      }
+    });
+    return value;
+  } catch (e) {
+    console.error(`Error extracting ${label}:`, e.message);
+  }
+  return '';
+};
+
+
+// @desc    Step 1: Fetch Vehicle Data (from DB or Web Scraper)
+// @route   POST /api/vehicle/search
 // @access  Private
 exports.lookupVehicle = async (req, res, next) => {
   let { vrm } = req.body;
@@ -26,55 +52,64 @@ exports.lookupVehicle = async (req, res, next) => {
     });
   }
 
-  // 2. If not in DB, fetch from DVLA VES API
-  const apiKey = process.env.DVLA_API_KEY;
-  const apiUrl = 'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles';
+  // 2. If not in DB, fetch from carcheckfree.co.uk
+  const scrapeUrl = `https://www.carcheckfree.co.uk/cardetails/${vrm}`;
 
   try {
-    const response = await axios.post(
-      apiUrl,
-      { registrationNumber: vrm },
-      {
-        headers: {
-          'x-api-key': apiKey,
-          'Content-Type': 'application/json'
-        }
+    const response = await axios.get(scrapeUrl, {
+      headers: {
+        // Add a common user-agent to mimic a browser
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
       }
-    );
+    });
+    
+    const $ = cheerio.load(response.data);
 
-    const apiData = response.data;
-
-    // Map DVLA response to our Schema structure
-    // We do NOT save here. We send this to frontend to pre-fill the form.
+    // Map scraped data to our Schema structure using NEW LABELS
     const vehicleData = {
-      vrm: apiData.registrationNumber,
-      manufacturer: apiData.make,
-      model: '', // DVLA does not provide model, user must fill this
-      automatedVehicle: apiData.automatedVehicle || false,
-      co2Emissions: apiData.co2Emissions || 0,
-      fuelType: apiData.fuelType,
-      engineCapacity: apiData.engineCapacity,
-      yearOfManufacture: apiData.yearOfManufacture,
-      colour: apiData.colour
+      vrm: findRowData($, 'VRM') || vrm,
+      manufacturer: findRowData($, 'Make'), // Label changed from "Manufacturer"
+      model: findRowData($, 'Model'),
+      trim: '', // NOTE: "Trim" is not available as a separate field in the provided HTML.
+      yearOfManufacture: parseInt(findRowData($, 'Year of manufacture'), 10) || null, // Label changed
+      fuelType: findRowData($, 'Fuel type'),
+      engineCapacity: parseInt(findRowData($, 'Engine capacity'), 10) || null, // Label changed
+      isImport: false, // NOTE: "Import" is not available in the provided HTML. Defaulting to false.
+      automatedVehicle: false, // NOTE: Not available in HTML. Defaulting to false.
+      co2Emissions: parseInt(findRowData($, 'CO2 emissions'), 10) || 0,
+      colour: findRowData($, 'Colour') || 'Unknown'
     };
+    
+    // Check if essential data was found
+    if (!vehicleData.manufacturer || !vehicleData.model) {
+        return next(new AppError('Vehicle not found or website structure changed', 404));
+    }
+
+    // This section is no longer needed as we are populating all fields
+    // directly from the scrape or with defaults.
+    /*
+    const dvlaData = {
+        automatedVehicle: false,
+        co2Emissions: 0,
+        colour: 'Unknown',
+        ...vehicleData // This overwrites defaults with scraped data
+    };
+    */
 
     res.status(200).json({
       success: true,
-      source: 'dvla_api', // Inform frontend data came from API (needs 'model' input)
-      data: vehicleData
+      source: 'web_scraper', // Inform frontend data came from scraper
+      data: vehicleData // Send the populated vehicleData object
     });
 
   } catch (apiError) {
-    console.error('DVLA API Error:', apiError.message);
+    console.error('Web Scraper Error:', apiError.message);
     
     if (apiError.response && apiError.response.status === 404) {
-        return next(new AppError('Vehicle not found in DVLA database', 404));
-    }
-    if (apiError.response && apiError.response.status === 403) {
-         return next(new AppError('DVLA API Limit reached or Invalid Key', 403));
+        return next(new AppError('Vehicle not found on carcheckfree.co.uk', 404));
     }
 
-    return next(new AppError('External Vehicle API unavailable', 502));
+    return next(new AppError('External Vehicle Scraper unavailable', 502));
   }
 };
 
@@ -83,9 +118,9 @@ exports.lookupVehicle = async (req, res, next) => {
 // @access  Private
 exports.saveVehicle = async (req, res, next) => {
   const { 
-    vrm, manufacturer, model, automatedVehicle, 
-    co2Emissions, fuelType, engineCapacity, 
-    yearOfManufacture, colour 
+    vrm, manufacturer, model, trim, // Added trim
+    automatedVehicle, co2Emissions, fuelType, 
+    engineCapacity, yearOfManufacture, colour 
   } = req.body;
 
   // 1. Upsert Vehicle (Create if new, Update if exists)
@@ -93,9 +128,9 @@ exports.saveVehicle = async (req, res, next) => {
   const vehicle = await Vehicle.findOneAndUpdate(
     { vrm },
     {
-      vrm, manufacturer, model, automatedVehicle,
-      co2Emissions, fuelType, engineCapacity,
-      yearOfManufacture, colour,
+      vrm, manufacturer, model, trim, // Added trim
+      automatedVehicle, co2Emissions, fuelType, 
+      engineCapacity, yearOfManufacture, colour,
       lastSearchedAt: Date.now()
     },
     { new: true, upsert: true, runValidators: true }

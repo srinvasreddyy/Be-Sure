@@ -19,6 +19,10 @@ const VehicleSchema = new mongoose.Schema({
     required: [true, 'Model is required'] 
     // This will be filled by the user on the frontend before saving
   },
+  trim: {
+    type: String,
+    default: ''
+  },
   automatedVehicle: {
     type: Boolean,
     required: [true, 'Automated Vehicle status is required'],

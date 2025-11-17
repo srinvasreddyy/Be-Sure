@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { register, login, sendOTP, verifyOTP } = require('../controllers/authController');
-const { searchVehicle, getHistory } = require('../controllers/vehicleController');
+const { lookupVehicle, getHistory } = require('../controllers/vehicleController');
 const { protect } = require('../middleware/auth');
 
 // Auth Routes
@@ -11,7 +11,7 @@ router.post('/auth/send-otp', protect, sendOTP);
 router.post('/auth/verify-otp', protect, verifyOTP);
 
 // Vehicle Routes
-router.post('/vehicle/search', protect, searchVehicle);
+router.post('/vehicle/search', protect, lookupVehicle);
 router.get('/vehicle/history', protect, getHistory);
 
 module.exports = router;
