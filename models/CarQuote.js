@@ -1,16 +1,17 @@
 const mongoose = require('mongoose');
-const vehicleInfoSchema = require('./schemas/VehicleInfoSchema');
-const driverInfoSchema = require('./schemas/DriverInfoSchema');
-const licenseInfoSchema = require('./schemas/LicenseInfoSchema');
-const historyInfoSchema = require('./schemas/HistoryInfoSchema');
-const usageInfoSchema = require('./schemas/UsageInfoSchema');
-const paymentInfoSchema = require('./schemas/PaymentInfoSchema');
+const vehicleInfoSchema = require('./VehicleInfoSchema');
+const driverInfoSchema = require('./DriverInfoSchema');
+const licenseInfoSchema = require('./LicenseInfoSchema');
+const historyInfoSchema = require('./HistoryInfoSchema');
+const usageInfoSchema = require('./UsageInfoSchema');
+const paymentInfoSchema = require('./PaymentInfoSchema');
 
 const carQuoteSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    index: true // Add index for faster lookups by user
   },
   status: {
     type: String,
@@ -24,11 +25,11 @@ const carQuoteSchema = new mongoose.Schema({
     manufacturer: { type: String },
     model: { type: String },
     trim: { type: String },
-    year: { type: String },
+    year: { type: String }, // Can be string or number, let's keep as string for consistency from scrape
     transmission: { type: String },
     fuelType: { type: String },
-    engineSize: { type: String },
-    value: { type: String },
+    engineSize: { type: String }, // Can be string or number
+    value: { type: String }, // Estimated value, user input
     isImport: { type: String },
     driveSide: { type: String },
     seats: { type: String }
@@ -42,12 +43,12 @@ const carQuoteSchema = new mongoose.Schema({
   usageInfo: usageInfoSchema,
   paymentInfo: paymentInfoSchema,
   
-  // Final quote price
+  // Final quote price (to be set by a future quote engine)
   quotePrice: {
     type: Number
   },
 
-}, { timestamps: true });
+}, { timestamps: true }); // timestamps adds createdAt and updatedAt
 
 const CarQuote = mongoose.model('CarQuote', carQuoteSchema);
 
