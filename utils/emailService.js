@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const logger = require('./logger'); // Import logger
 
 const sendEmail = async (options) => {
   // Create transporter using Gmail Service
@@ -15,12 +16,13 @@ const sendEmail = async (options) => {
     from: `${process.env.SMTP_EMAIL} <noreply@ukinsurance.co.uk>`,
     to: options.email,
     subject: options.subject,
-    text: options.message,
+    text: options.text,
     html: options.html // Optional HTML version
   };
 
   const info = await transporter.sendMail(message);
-  console.log('Message sent: %s', info.messageId);
+  // Use logger.info, not console.log
+  logger.info(`Email sent: ${info.messageId}`, { to: options.email, subject: options.subject });
 };
 
 module.exports = sendEmail;

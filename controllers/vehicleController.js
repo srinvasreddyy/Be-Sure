@@ -3,6 +3,7 @@ const cheerio = require('cheerio'); // Import cheerio
 const Vehicle = require('../models/Vehicle');
 const User = require('../models/User');
 const AppError = require('../utils/AppError');
+const logger = require('../utils/logger'); // Import logger
 
 /**
  * NEW Helper function to find data in the new HTML structure.
@@ -23,7 +24,11 @@ const findRowData = ($, label) => {
     });
     return value;
   } catch (e) {
-    console.error(`Error extracting ${label}:`, e.message);
+    // Use logger.warn, not console.error
+    logger.warn(`Error extracting ${label} from Cheerio object`, { 
+      error: e, 
+      stack: e.stack 
+    });
   }
   return '';
 };
@@ -82,19 +87,10 @@ exports.lookupVehicle = async (req, res, next) => {
     
     // Check if essential data was found
     if (!vehicleData.manufacturer || !vehicleData.model) {
+        // Log the failure before calling next
+        logger.warn('Vehicle not found or website structure changed', { vrm, scrapeUrl });
         return next(new AppError('Vehicle not found or website structure changed', 404));
     }
-
-    // This section is no longer needed as we are populating all fields
-    // directly from the scrape or with defaults.
-    /*
-    const dvlaData = {
-        automatedVehicle: false,
-        co2Emissions: 0,
-        colour: 'Unknown',
-        ...vehicleData // This overwrites defaults with scraped data
-    };
-    */
 
     res.status(200).json({
       success: true,
@@ -103,7 +99,14 @@ exports.lookupVehicle = async (req, res, next) => {
     });
 
   } catch (apiError) {
-    console.error('Web Scraper Error:', apiError.message);
+    // Use logger, not console.error
+    // Also, log the original error *before* creating a new AppError
+    logger.error('Web Scraper Error:', { 
+      vrm, 
+      scrapeUrl,
+      error: apiError, 
+      stack: apiError.stack 
+    });
     
     if (apiError.response && apiError.response.status === 404) {
         return next(new AppError('Vehicle not found on carcheckfree.co.uk', 404));

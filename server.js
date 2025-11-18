@@ -1,8 +1,13 @@
+// Utilities
+const logger = require('./utils/logger'); // IMPORT LOGGER FIRST
+
 // Handle uncaught exceptions immediately
 process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION 💥 Shutting down...');
-  console.error(err.name, err.message);
-  // In production, you might want to use the logger here before exit
+  // Use logger, not console. Pass full error object for stack trace.
+  logger.error('UNCAUGHT EXCEPTION 💥 Shutting down...', {
+    error: err,
+    stack: err.stack
+  });
   process.exit(1);
 });
 
@@ -21,7 +26,6 @@ require('express-async-errors'); // Patch async handlers
 dotenv.config();
 
 // Utilities
-const logger = require('./utils/logger');
 const globalErrorHandler = require('./middleware/errorMiddleware');
 const AppError = require('./utils/AppError');
 
@@ -55,7 +59,11 @@ const connectDB = async () => {
     await mongoose.connect(process.env.MONGO_URI);
     logger.info('MongoDB Connected');
   } catch (err) {
-    logger.error('MongoDB Connection Error:', err);
+    // Use logger for DB connection errors as well
+    logger.error('MongoDB Connection Error:', {
+      error: err,
+      stack: err.stack
+    });
     process.exit(1);
   }
 };
@@ -82,8 +90,11 @@ if (process.env.NODE_ENV !== 'test') {
 
   // Handle Unhandled Rejections
   process.on('unhandledRejection', (err) => {
-    logger.error('UNHANDLED REJECTION 💥 Shutting down...');
-    logger.error(err.name, err.message);
+    // Use logger, not console. Pass full error object for stack trace.
+    logger.error('UNHANDLED REJECTION 💥 Shutting down...', {
+      error: err,
+      stack: err.stack
+    });
     server.close(() => {
       process.exit(1);
     });

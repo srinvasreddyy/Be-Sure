@@ -1,6 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, sendOTP, verifyOTP } = require('../controllers/authController');
+const rateLimit = require('express-rate-limit'); // Import rate-limit
+const { 
+  register, 
+  login, 
+  verifyOTP,
+  resendVerification,
+  forgotPassword, // Added
+  resetPassword   // Added
+} = require('../controllers/authController');
 const { lookupVehicle, getHistory } = require('../controllers/vehicleController');
 const { protect } = require('../middleware/auth');
 const {
@@ -14,18 +22,33 @@ const {
   updatePaymentInfo
 } = require('../controllers/quoteController');
 
-// --- Auth Routes ---
-router.post('/auth/register', register);
-router.post('/auth/login', login);
-router.post('/auth/send-otp', protect, sendOTP);
-router.post('/auth/verify-otp', protect, verifyOTP);
+// --- Stricter Rate Limiter for Auth Routes ---
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit each IP to 20 requests per window (per 15 minutes)
+  message: {
+    success: false,
+    error: 'Too many requests from this IP, please try again after 15 minutes'
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
+// --- Auth Routes (Now with authLimiter) ---
+router.post('/auth/register', authLimiter, register);
+router.post('/auth/login', authLimiter, login);
+router.post('/auth/verify-otp', authLimiter, verifyOTP);
+router.post('/auth/resend-verification', authLimiter, resendVerification);
+router.post('/auth/forgot-password', authLimiter, forgotPassword); // New public route
+router.post('/auth/reset-password', authLimiter, resetPassword);   // New public route
 
 // --- Vehicle Routes ---
+// These routes are protected by the global limiter in server.js
 router.post('/vehicle/search', protect, lookupVehicle);
 router.get('/vehicle/history', protect, getHistory);
 
 // --- Quote Routes (New) ---
-// All quote routes are protected
+// These routes are protected by the global limiter in server.js
 router.post('/quote/start', protect, createQuote);
 router.get('/quote/:quoteId', protect, getQuote);
 router.post('/quote/:quoteId/vehicle-info', protect, updateVehicleInfo);

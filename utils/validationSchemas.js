@@ -1,5 +1,36 @@
 const Joi = require('joi');
 
+// --- Auth Schemas (NEW) ---
+exports.registerSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().min(6).required()
+});
+
+exports.loginSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().required()
+});
+
+exports.verifyOTPSchema = Joi.object({
+  email: Joi.string().email().required(),
+  code: Joi.string().length(6).required()
+});
+
+exports.resendVerificationSchema = Joi.object({
+  email: Joi.string().email().required()
+});
+
+exports.forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().required()
+});
+
+exports.resetPasswordSchema = Joi.object({
+  email: Joi.string().email().required(),
+  code: Joi.string().length(6).required(),
+  newPassword: Joi.string().min(6).required()
+});
+
+
 // --- Vehicle Details (for creating a quote) ---
 const vehicleDetailsSchema = Joi.object({
   plate: Joi.string().required(),
@@ -21,7 +52,7 @@ exports.createQuoteSchema = Joi.object({
 });
 
 // --- Sub-schema Validations ---
-
+// (No changes to the quote-related schemas)
 exports.vehicleInfo = Joi.object({
   buyMonth: Joi.string().allow('').optional(),
   buyYear: Joi.string().allow('').optional(),
@@ -33,7 +64,6 @@ exports.vehicleInfo = Joi.object({
   mileageUnit: Joi.string().allow('').optional(),
   householdCars: Joi.string().allow('').optional(),
   otherVehicleAccess: Joi.string().allow('').optional(),
-  // isFilled is set by controller, not user
 });
 
 exports.driverInfo = Joi.object({

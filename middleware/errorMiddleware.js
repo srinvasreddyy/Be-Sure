@@ -7,8 +7,16 @@ const handleCastErrorDB = (err) => {
 };
 
 const handleDuplicateFieldsDB = (err) => {
-  const value = err.errmsg.match(/(["'])(\\?.)*?\1/)[0];
-  const message = `Duplicate field value: ${value}. Please use another value!`;
+  // Use the err.keyValue object for a robust error message
+  let message;
+  if (err.keyValue) {
+    const field = Object.keys(err.keyValue)[0];
+    const value = err.keyValue[field];
+    message = `Duplicate field value: "${value}". Please use another value!`;
+  } else {
+    // Fallback just in case keyValue is not available
+    message = 'Duplicate field value entered. Please use another value!';
+  }
   return new AppError(message, 400);
 };
 
@@ -24,8 +32,12 @@ const handleJWTError = () =>
 const handleJWTExpiredError = () => 
   new AppError('Your token has expired! Please log in again.', 401);
 
-const sendErrorDev = (err, res) => {
-  logger.error(`DEV ERROR: ${err.message}`, { stack: err.stack });
+const sendErrorDev = (err, req, res) => {
+  logger.error(`DEV ERROR: ${err.message}`, { 
+    error: err, 
+    stack: err.stack,
+    url: req.originalUrl
+  });
   
   res.status(err.statusCode).json({
     success: false,
@@ -35,10 +47,14 @@ const sendErrorDev = (err, res) => {
   });
 };
 
-const sendErrorProd = (err, res) => {
+const sendErrorProd = (err, req, res) => {
   // A) Operational, trusted error: send message to client
   if (err.isOperational) {
-    logger.warn(`OPERATIONAL ERROR: ${err.message}`);
+    // Operational errors are logged as warnings, as they are expected
+    logger.warn(`OPERATIONAL ERROR: ${err.message}`, {
+      url: req.originalUrl,
+      status: err.statusCode
+    });
     
     res.status(err.statusCode).json({
       success: false,
@@ -47,10 +63,12 @@ const sendErrorProd = (err, res) => {
   } 
   // B) Programming or other unknown error: don't leak details
   else {
-    // 1) Log error
+    // 1) Log error (as a critical error)
     logger.error('PROGRAMMING ERROR 💥', { 
       message: err.message, 
-      stack: err.stack 
+      stack: err.stack,
+      url: req.originalUrl,
+      error: err
     });
 
     // 2) Send generic message
@@ -65,12 +83,16 @@ module.exports = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
 
+  // Use NODE_ENV from process.env
   if (process.env.NODE_ENV === 'development') {
-    sendErrorDev(err, res);
-  } else {
+    sendErrorDev(err, req, res);
+  } else { // 'production' or any other value
     let error = { ...err };
     error.message = err.message;
     error.name = err.name; // Important for checks below
+    error.stack = err.stack; // Ensure stack is copied
+    error.keyValue = err.keyValue; // Ensure keyValue is copied
+    error.code = err.code; // Ensure code is copied
 
     if (error.name === 'CastError') error = handleCastErrorDB(error);
     if (error.code === 11000) error = handleDuplicateFieldsDB(error);
@@ -78,6 +100,7 @@ module.exports = (err, req, res, next) => {
     if (error.name === 'JsonWebTokenError') error = handleJWTError();
     if (error.name === 'TokenExpiredError') error = handleJWTExpiredError();
 
-    sendErrorProd(error, res);
+    // Pass req to sendErrorProd for logging
+    sendErrorProd(error, req, res);
   }
 };
