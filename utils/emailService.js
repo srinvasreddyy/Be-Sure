@@ -1,19 +1,28 @@
 const nodemailer = require('nodemailer');
 const logger = require('./logger');
 
-const sendEmail = async (options) => {
-  // Using the 'gmail' service shorthand as requested.
-  // This automatically handles host/port settings for Google.
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.SMTP_EMAIL, // Your Gmail address
-      pass: process.env.SMTP_PASSWORD // Your 16-char Google App Password
-    }
-  });
+/**
+ * Creates a reusable Nodemailer transport object using Gmail.
+ * * Configuration notes:
+ * 1. service: 'gmail' - As requested.
+ * 2. family: 4 - Forces IPv4. This is CRITICAL for fixing the "Connection timeout" on Render.
+ * 3. rejectUnauthorized: false - Allows sending without strict SSL checks.
+ */
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  family: 4, // Fixes Connection Timeout on cloud servers (forces IPv4)
+  auth: {
+    user: process.env.SMTP_EMAIL,
+    pass: process.env.SMTP_PASSWORD
+  },
+  tls: {
+    rejectUnauthorized: false // "Without security also no problem"
+  }
+});
 
+const sendEmail = async (options) => {
   const message = {
-    from: `${process.env.SMTP_EMAIL} <noreply@ukinsurance.co.uk>`,
+    from: `"Be-Sure Insurance" <${process.env.SMTP_EMAIL}>`,
     to: options.email,
     subject: options.subject,
     text: options.text,
@@ -22,22 +31,17 @@ const sendEmail = async (options) => {
 
   try {
     const info = await transporter.sendMail(message);
-    logger.info(`Email sent successfully: ${info.messageId}`, {
-      to: options.email,
-      subject: options.subject
-    });
+    logger.info(`Email sent successfully to ${options.email}. Message ID: ${info.messageId}`);
+    return info;
   } catch (error) {
-    // Enhanced logging to find the specific cause of the error (e.g., ETIMEDOUT, EAUTH)
     logger.error('Email Service Error:', {
       message: error.message,
       code: error.code,
-      command: error.command,
-      response: error.response,
       stack: error.stack,
       target: options.email
     });
     
-    // Re-throw to ensure the controller knows the email failed
+    // Re-throw to ensure the controller handles the failure
     throw error;
   }
 };

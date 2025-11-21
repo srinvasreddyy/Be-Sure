@@ -34,6 +34,10 @@ const apiRoutes = require('./routes/api');
 
 const app = express();
 
+// Trust the first proxy (Render/Heroku/etc.) so that IP addresses are resolved correctly
+// This fixes the ERR_ERL_UNEXPECTED_X_FORWARDED_FOR error
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet()); // Set security headers
 app.use(express.json()); // Body parser
