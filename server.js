@@ -85,7 +85,8 @@ app.use(globalErrorHandler);
 // Start Server (only if not testing)
 if (process.env.NODE_ENV !== 'test') {
   connectDB();
-  const PORT = process.env.PORT || 5000;
+  // const PORT = process.env.PORT || 5000;
+  const PORT = process.env.PORT;
   const server = app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
 
   // Handle Unhandled Rejections
