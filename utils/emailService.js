@@ -1,16 +1,14 @@
 const nodemailer = require('nodemailer');
-const logger = require('./logger'); // Import logger
+const logger = require('./logger');
 
 const sendEmail = async (options) => {
-  // Create transporter using explicit SMTP settings for stability
-  // Port 465 (SSL) is generally more reliable in production environments than 587
+  // Using the 'gmail' service shorthand as requested.
+  // This automatically handles host/port settings for Google.
   const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // use SSL
+    service: 'gmail',
     auth: {
-      user: process.env.SMTP_EMAIL,
-      pass: process.env.SMTP_PASSWORD
+      user: process.env.SMTP_EMAIL, // Your Gmail address
+      pass: process.env.SMTP_PASSWORD // Your 16-char Google App Password
     }
   });
 
@@ -19,27 +17,27 @@ const sendEmail = async (options) => {
     to: options.email,
     subject: options.subject,
     text: options.text,
-    html: options.html // Optional HTML version
+    html: options.html
   };
 
   try {
     const info = await transporter.sendMail(message);
-    // Log success with message ID for tracking
-    logger.info(`Email sent successfully: ${info.messageId}`, { 
-      to: options.email, 
-      subject: options.subject 
+    logger.info(`Email sent successfully: ${info.messageId}`, {
+      to: options.email,
+      subject: options.subject
     });
   } catch (error) {
-    // Log the FULL error details immediately for easier debugging
-    logger.error('Nodemailer System Error:', { 
+    // Enhanced logging to find the specific cause of the error (e.g., ETIMEDOUT, EAUTH)
+    logger.error('Email Service Error:', {
       message: error.message,
       code: error.code,
+      command: error.command,
       response: error.response,
       stack: error.stack,
       target: options.email
     });
     
-    // Re-throw the error so the authController knows it failed
+    // Re-throw to ensure the controller knows the email failed
     throw error;
   }
 };
